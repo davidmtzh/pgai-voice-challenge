@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Call artifacts - we may remove these ignores before final submission
+calls/recordings/*
+calls/transcripts/*
+calls/metadata/*
+
+# Keep folders
+!calls/recordings/.gitkeep
+!calls/transcripts/.gitkeep
+!calls/metadata/.gitkeep

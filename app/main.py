@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
-from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
+from twilio.twiml.voice_response import VoiceResponse, Connect
 
 from app.config import get_settings
+from app.realtime_bridge import bridge_twilio_to_openai
 
 app = FastAPI(title="Pretty Good AI Patient Voice Bot")
 
@@ -20,19 +21,11 @@ async def voice_webhook(request: Request):
     """
     Twilio calls this endpoint after the outbound call connects.
 
-    For Phase 2, this returns TwiML that connects the phone call audio
-    to our /media-stream WebSocket. In Phase 3, that WebSocket will bridge
-    Twilio audio to OpenAI Realtime.
+    It returns TwiML that connects the phone call audio to our WebSocket.
     """
     settings = get_settings()
 
     response = VoiceResponse()
-
-    response.say(
-        "Hello. This is the automated patient simulator connecting now.",
-        voice="alice",
-        language="en-US",
-    )
 
     connect = Connect()
     stream_url = settings.public_base_url.replace("https://", "wss://").replace("http://", "ws://")
@@ -46,17 +39,17 @@ async def voice_webhook(request: Request):
 @app.websocket("/media-stream")
 async def media_stream(websocket: WebSocket):
     """
-    Phase 2 WebSocket endpoint.
+    Twilio Media Stream endpoint.
 
-    For now, we only accept the stream and print incoming Twilio events.
-    In Phase 3, this becomes the Twilio <-> OpenAI Realtime bridge.
+    Phase 3: bridge Twilio audio to OpenAI Realtime and stream OpenAI audio
+    back into the phone call.
     """
     await websocket.accept()
     print("Twilio media stream connected.")
 
     try:
-        while True:
-            message = await websocket.receive_text()
-            print("Received Twilio event:", message[:300])
+        await bridge_twilio_to_openai(websocket, scenario_name="appointment_basic")
     except WebSocketDisconnect:
         print("Twilio media stream disconnected.")
+    except Exception as exc:
+        print(f"Media stream error: {exc}")

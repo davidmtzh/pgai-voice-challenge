@@ -18,6 +18,8 @@ class Settings:
     public_base_url: str
     pgai_test_number: str
 
+    max_calls: int
+    max_call_duration_seconds: int
 
 def get_settings() -> Settings:
     return Settings(
@@ -29,4 +31,6 @@ def get_settings() -> Settings:
         twilio_from_number=os.getenv("TWILIO_FROM_NUMBER", ""),
         public_base_url=os.getenv("PUBLIC_BASE_URL", ""),
         pgai_test_number=os.getenv("PGAI_TEST_NUMBER", "+18054398008"),
+        max_calls=int(os.getenv("MAX_CALLS", "12")),
+        max_call_duration_seconds=int(os.getenv("MAX_CALL_DURATION_SECONDS", "30")),
     )

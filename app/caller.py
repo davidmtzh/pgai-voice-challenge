@@ -49,6 +49,7 @@ def place_assessment_call() -> str:
         from_=settings.twilio_from_number,
         url=f"{settings.public_base_url}/voice",
         record=True,
+        time_limit=settings.max_call_duration_seconds,
     )
 
     return call.sid

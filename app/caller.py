@@ -1,6 +1,11 @@
+from urllib.parse import urlencode
+
 from twilio.rest import Client
 
 from app.config import get_settings
+
+
+REQUIRED_ASSESSMENT_NUMBER = "+18054398008"
 
 
 def validate_required_settings() -> None:
@@ -23,31 +28,31 @@ def validate_required_settings() -> None:
         )
 
 
-def place_assessment_call() -> str:
+def place_assessment_call(scenario_name: str = "appointment_basic") -> str:
     """
     Places one outbound call to the Pretty Good AI assessment number.
 
     Safety rule:
-    The destination is read from PGAI_TEST_NUMBER and must match the required
-    assessment number. This prevents accidentally calling other numbers.
+    The destination must be the required assessment number.
     """
     validate_required_settings()
     settings = get_settings()
 
-    required_number = "+18054398008"
-
-    if settings.pgai_test_number != required_number:
+    if settings.pgai_test_number != REQUIRED_ASSESSMENT_NUMBER:
         raise RuntimeError(
-            f"Safety check failed. PGAI_TEST_NUMBER must be {required_number}, "
+            f"Safety check failed. PGAI_TEST_NUMBER must be {REQUIRED_ASSESSMENT_NUMBER}, "
             f"but got {settings.pgai_test_number}"
         )
+
+    query = urlencode({"scenario": scenario_name})
+    voice_url = f"{settings.public_base_url}/voice?{query}"
 
     client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
 
     call = client.calls.create(
         to=settings.pgai_test_number,
         from_=settings.twilio_from_number,
-        url=f"{settings.public_base_url}/voice",
+        url=voice_url,
         record=True,
         time_limit=settings.max_call_duration_seconds,
     )

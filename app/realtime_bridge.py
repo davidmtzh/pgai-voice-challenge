@@ -8,13 +8,11 @@ import websockets
 from fastapi import WebSocket
 
 from app.config import get_settings
-from app.scenarios import build_patient_prompt
+from app.scenarios import SCENARIOS, build_patient_prompt
 
 
 OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
 
-# OpenAI PCM output rate requested below.
-# Twilio requires 8kHz G.711 μ-law.
 OPENAI_PCM_SAMPLE_RATE = 24000
 TWILIO_SAMPLE_RATE = 8000
 
@@ -27,8 +25,8 @@ def pcm16_base64_to_twilio_mulaw_base64(pcm16_b64: str) -> str:
 
     pcm16_8khz, _ = audioop.ratecv(
         pcm16_audio,
-        2,      # 2 bytes per sample for PCM16
-        1,      # mono
+        2,
+        1,
         OPENAI_PCM_SAMPLE_RATE,
         TWILIO_SAMPLE_RATE,
         None,
@@ -46,13 +44,7 @@ async def bridge_twilio_to_openai(
     """
     Bridges Twilio Media Streams audio to OpenAI Realtime.
 
-    Twilio -> OpenAI:
-        Twilio sends G.711 μ-law 8kHz audio.
-        OpenAI is configured to accept PCMU audio.
-
-    OpenAI -> Twilio:
-        OpenAI outputs PCM16 audio.
-        We convert it to G.711 μ-law 8kHz before sending it to Twilio.
+    The selected scenario is received from Twilio's start.customParameters.
     """
     settings = get_settings()
 
@@ -60,7 +52,6 @@ async def bridge_twilio_to_openai(
         raise RuntimeError("OPENAI_API_KEY is missing from .env")
 
     model = settings.openai_realtime_model or "gpt-realtime"
-    prompt = build_patient_prompt(scenario_name)
     openai_url = f"{OPENAI_REALTIME_URL}?model={model}"
 
     headers = {
@@ -70,6 +61,7 @@ async def bridge_twilio_to_openai(
     stream_sid: Optional[str] = None
     audio_chunks_sent = 0
     assistant_speaking = False
+    openai_session_initialized = False
 
     async with websockets.connect(
         openai_url,
@@ -80,7 +72,24 @@ async def bridge_twilio_to_openai(
     ) as openai_ws:
         print("Connected to OpenAI Realtime.")
 
-        await initialize_openai_session(openai_ws, prompt)
+        async def initialize_for_scenario(selected_scenario: str) -> None:
+            nonlocal openai_session_initialized
+
+            if selected_scenario not in SCENARIOS:
+                print(f"Unknown scenario '{selected_scenario}', falling back to appointment_basic.")
+                selected_scenario = "appointment_basic"
+
+            print(f"Using scenario: {selected_scenario}")
+
+            prompt = build_patient_prompt(selected_scenario)
+
+            print("=" * 80)
+            print(f"Building OpenAI prompt for scenario: {selected_scenario}")
+            print(prompt[:1200])
+            print("=" * 80)
+
+            await initialize_openai_session(openai_ws, prompt)
+            openai_session_initialized = True
 
         async def receive_from_twilio() -> None:
             nonlocal stream_sid
@@ -98,12 +107,21 @@ async def bridge_twilio_to_openai(
                         stream_sid = data["start"]["streamSid"]
                         call_sid = data["start"].get("callSid")
                         media_format = data["start"].get("mediaFormat", {})
+                        custom_parameters = data["start"].get("customParameters", {})
+
+                        selected_scenario = custom_parameters.get("scenario", scenario_name)
 
                         print(f"Twilio stream started. Stream SID: {stream_sid}")
                         print(f"Twilio Call SID: {call_sid}")
                         print(f"Twilio media format: {media_format}")
+                        print(f"Twilio custom parameters: {custom_parameters}")
+
+                        await initialize_for_scenario(selected_scenario)
 
                     elif event_type == "media":
+                        if not openai_session_initialized:
+                            continue
+
                         audio_payload = data["media"]["payload"]
 
                         await openai_ws.send(json.dumps({
@@ -158,8 +176,6 @@ async def bridge_twilio_to_openai(
                         assistant_speaking = False
 
                     elif response_type == "input_audio_buffer.speech_started":
-                        # Pretty Good AI started talking.
-                        # If our patient audio is still queued, clear it to reduce overlap.
                         if stream_sid and assistant_speaking:
                             print("Agent interrupted. Clearing queued Twilio audio.")
                             await twilio_ws.send_json({
@@ -214,11 +230,7 @@ async def bridge_twilio_to_openai(
 
 async def initialize_openai_session(openai_ws, prompt: str) -> None:
     """
-    Configure Realtime session using the schema your current OpenAI project accepts.
-
-    Key turn-taking change:
-    create_response=True lets OpenAI wait until Pretty Good AI stops talking,
-    then generate the patient response automatically.
+    Configure Realtime session using the current schema your project accepts.
     """
     session_update = {
         "type": "session.update",
@@ -235,7 +247,7 @@ async def initialize_openai_session(openai_ws, prompt: str) -> None:
                         "type": "server_vad",
                         "threshold": 0.55,
                         "prefix_padding_ms": 300,
-                        "silence_duration_ms": 1200,
+                        "silence_duration_ms": 800,
                         "create_response": True,
                         "interrupt_response": True
                     }

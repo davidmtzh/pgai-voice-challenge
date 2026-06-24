@@ -247,7 +247,7 @@ async def initialize_openai_session(openai_ws, prompt: str) -> None:
                         "type": "server_vad",
                         "threshold": 0.55,
                         "prefix_padding_ms": 300,
-                        "silence_duration_ms": 800,
+                        "silence_duration_ms": 700,
                         "create_response": True,
                         "interrupt_response": True
                     }

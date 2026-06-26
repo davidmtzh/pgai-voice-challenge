@@ -101,8 +101,8 @@ At approximately 0:28 in the first `third_party_caregiver` recording, the agent 
 
 **Severity:** Medium  
 **Scenario:** `third_party_caregiver`  
-**Recording:** `calls/recordings/06_third_party_caregiver_run_02_dob_loop.mp3`  
-**Transcript:** `calls/transcripts/06_third_party_caregiver_run_02_dob_loop.txt`  
+**Recording:** `calls/recordings/06_third_party_caregiver_run_02_transfer.mp3`  
+**Transcript:** `calls/transcripts/06_third_party_caregiver_run_02_transfer.txt`  
 **Timestamp:** 1:30
 
 ### What happened
